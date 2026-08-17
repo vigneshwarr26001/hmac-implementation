@@ -26,7 +26,7 @@ The goal isn't to ship a product — it's to provide a readable, tested referenc
 
 ## Features
 
-- **HMAC-SHA256 request signing & verification** ([src/utils/hmac.ts](src/utils/hmac.ts))
+- **HMAC-SHA256 request signing & verification** ([hmac-api/src/utils/hmac.ts](src/utils/hmac.ts))
 - **Canonical message construction** from HTTP method, URL, timestamp, and payload hash
 - **Payload hashing** (SHA-256 over the JSON-serialized body)
 - **Timestamp validation** with a ±60 second tolerance window
@@ -100,7 +100,7 @@ sequenceDiagram
 
 ## How request signing works
 
-The signing recipe lives in [src/utils/hmac.ts](src/utils/hmac.ts) and is intentionally small and dependency-free so it can be re-implemented in any language.
+The signing recipe lives in [hmac-api/src/utils/hmac.ts](src/utils/hmac.ts) and is intentionally small and dependency-free so it can be re-implemented in any language.
 
 **1. Hash the request body (SHA-256, hex):**
 
@@ -140,7 +140,7 @@ Header names are matched case-insensitively (standard HTTP behavior), so `X-Hmac
 
 ### How the server verifies a request
 
-[src/middleware/authenticateHmac.ts](src/middleware/authenticateHmac.ts) runs as a `preValidation` hook on protected routes — after the body has been parsed (so it's available to hash) but before Zod validates the body's shape. It:
+[hmac-api/src/middleware/authenticateHmac.ts](src/middleware/authenticateHmac.ts) runs as a `preValidation` hook on protected routes — after the body has been parsed (so it's available to hash) but before Zod validates the body's shape. It:
 
 1. Rejects the request if `x-hmac` or `x-hmac-timestamp` is missing, or the timestamp isn't numeric.
 2. Rejects the request if the timestamp is more than **60 seconds** away from the server's current time, in either direction (protects against stale or clock-skewed requests).
@@ -247,7 +247,7 @@ npm install
 
 ### Configuration
 
-The server reads its configuration from environment variables (via [dotenv](https://www.npmjs.com/package/dotenv) and validated with Zod in [src/config/env.ts](src/config/env.ts)). Create a `.env` file in the project root:
+The server reads its configuration from environment variables (via [dotenv](https://www.npmjs.com/package/dotenv) and validated with Zod in [hmac-api/src/config/env.ts](src/config/env.ts)). Create a `.env` file in the project root:
 
 ```bash
 PORT=5000
@@ -353,7 +353,7 @@ The image declares a `HEALTHCHECK` that polls `GET /health` every 30 seconds.
 - **Timing-safe comparison:** signatures are compared with `crypto.timingSafeEqual`, not `===`, to avoid leaking information via response-time differences. A length check happens first (required by `timingSafeEqual`, which throws on mismatched buffer lengths), so a length mismatch is reported as a distinct error from a value mismatch.
 - **Replay protection is single-instance.** The replay cache is an in-memory `Map`; it resets on restart and isn't shared across multiple server instances. A multi-instance deployment needs a shared store instead.
 - **Timestamp tolerance is ±60 seconds.** Clients and servers should keep their clocks reasonably synchronized (e.g. via NTP); large clock drift will cause valid requests to be rejected.
-- **Sensitive headers are redacted from logs.** `x-hmac`, `x-hmac-timestamp`, and `authorization` are stripped from Fastify's request logs (see [src/app.ts](src/app.ts)).
+- **Sensitive headers are redacted from logs.** `x-hmac`, `x-hmac-timestamp`, and `authorization` are stripped from Fastify's request logs (see [hmac-api/src/app.ts](src/app.ts)).
 - **Always serve this over HTTPS in production.** HMAC authenticates and protects the integrity of a request, but does not provide confidentiality — without TLS, headers and body are still visible to anyone on the network path.
 - **This repository has no license file yet.** If you intend to reuse this code, add a `LICENSE` file to the repository to state the terms explicitly.
 
