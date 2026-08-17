@@ -26,7 +26,7 @@ The goal isn't to ship a product — it's to provide a readable, tested referenc
 
 ## Features
 
-- **HMAC-SHA256 request signing & verification** ([hmac-api/src/utils/hmac.ts](src/utils/hmac.ts))
+- **HMAC-SHA256 request signing & verification** ([hmac-api/src/utils/hmac.ts](hmac-api/src/utils/hmac.ts))
 - **Canonical message construction** from HTTP method, URL, timestamp, and payload hash
 - **Payload hashing** (SHA-256 over the JSON-serialized body)
 - **Timestamp validation** with a ±60 second tolerance window
@@ -100,7 +100,7 @@ sequenceDiagram
 
 ## How request signing works
 
-The signing recipe lives in [hmac-api/src/utils/hmac.ts](src/utils/hmac.ts) and is intentionally small and dependency-free so it can be re-implemented in any language.
+The signing recipe lives in [hmac-api/src/utils/hmac.ts](hmac-api/src/utils/hmac.ts) and is intentionally small and dependency-free so it can be re-implemented in any language.
 
 **1. Hash the request body (SHA-256, hex):**
 
@@ -140,7 +140,7 @@ Header names are matched case-insensitively (standard HTTP behavior), so `X-Hmac
 
 ### How the server verifies a request
 
-[hmac-api/src/middleware/authenticateHmac.ts](src/middleware/authenticateHmac.ts) runs as a `preValidation` hook on protected routes — after the body has been parsed (so it's available to hash) but before Zod validates the body's shape. It:
+[hmac-api/src/middleware/authenticateHmac.ts](hmac-api/src/middleware/authenticateHmac.ts) runs as a `preValidation` hook on protected routes — after the body has been parsed (so it's available to hash) but before Zod validates the body's shape. It:
 
 1. Rejects the request if `x-hmac` or `x-hmac-timestamp` is missing, or the timestamp isn't numeric.
 2. Rejects the request if the timestamp is more than **60 seconds** away from the server's current time, in either direction (protects against stale or clock-skewed requests).
@@ -241,13 +241,13 @@ Note that on `/user/withHmac`, authentication is checked **before** Zod validati
 
 ```bash
 git clone https://github.com/<your-username>/hmac-implementation.git
-cd hmac-implementation
+cd hmac-implementation/hmac-api
 npm install
 ```
 
 ### Configuration
 
-The server reads its configuration from environment variables (via [dotenv](https://www.npmjs.com/package/dotenv) and validated with Zod in [hmac-api/src/config/env.ts](src/config/env.ts)). Create a `.env` file in the project root:
+The server reads its configuration from environment variables (via [dotenv](https://www.npmjs.com/package/dotenv) and validated with Zod in [hmac-api/src/config/env.ts](hmac-api/src/config/env.ts)). Create a `.env` file inside `hmac-api/`:
 
 ```bash
 PORT=5000
@@ -265,6 +265,8 @@ If `AUTH_SIGNATURE` is missing or the environment fails validation, the process 
 > **Never commit your real `.env` file or secret.** `.env` is already excluded via `.gitignore`.
 
 ### Running locally
+
+Run from inside `hmac-api/`:
 
 ```bash
 # Development, with auto-restart on file changes
@@ -321,21 +323,24 @@ The test suite uses [Vitest](https://vitest.dev/) and is organized into:
 - `tests/integration/` — end-to-end route behavior (health check, unauthenticated route, error handling)
 - `tests/security/` — HMAC-specific behavior: missing/malformed headers, timestamp tolerance, replay protection, header case-insensitivity, and auth-before-validation ordering
 
+Run from inside `hmac-api/`:
+
 ```bash
 npm test              # run the full suite once
 npm run test:watch    # watch mode
 npm run test:coverage # run with V8 coverage report
 ```
 
-Tests run against a fixed test secret (`AUTH_SIGNATURE=test-only-secret-do-not-use-in-production`, configured in [vitest.config.mts](vitest.config.mts)) and use an independent, from-scratch re-implementation of the signing recipe in [tests/helpers/signRequest.ts](tests/helpers/signRequest.ts), so the tests can't pass simply because they share buggy logic with the server.
+Tests run against a fixed test secret (`AUTH_SIGNATURE=test-only-secret-do-not-use-in-production`, configured in [hmac-api/vitest.config.mts](hmac-api/vitest.config.mts)) and use an independent, from-scratch re-implementation of the signing recipe in [hmac-api/tests/helpers/signRequest.ts](hmac-api/tests/helpers/signRequest.ts), so the tests can't pass simply because they share buggy logic with the server.
 
 ---
 
 ## Running with Docker
 
-The included [Dockerfile](Dockerfile) uses a multi-stage build: dependencies and TypeScript are compiled in a build stage, then only production dependencies and the compiled `dist/` output are copied into the final `node:22-alpine` image, which runs as the non-root `node` user.
+The included [Dockerfile](hmac-api/Dockerfile) uses a multi-stage build: dependencies and TypeScript are compiled in a build stage, then only production dependencies and the compiled `dist/` output are copied into the final `node:22-alpine` image, which runs as the non-root `node` user. Build it from inside `hmac-api/` (the Dockerfile's `COPY` paths are relative to that directory):
 
 ```bash
+cd hmac-api
 docker build -t hmac-implementation .
 
 docker run -p 5000:5000 \
@@ -353,7 +358,7 @@ The image declares a `HEALTHCHECK` that polls `GET /health` every 30 seconds.
 - **Timing-safe comparison:** signatures are compared with `crypto.timingSafeEqual`, not `===`, to avoid leaking information via response-time differences. A length check happens first (required by `timingSafeEqual`, which throws on mismatched buffer lengths), so a length mismatch is reported as a distinct error from a value mismatch.
 - **Replay protection is single-instance.** The replay cache is an in-memory `Map`; it resets on restart and isn't shared across multiple server instances. A multi-instance deployment needs a shared store instead.
 - **Timestamp tolerance is ±60 seconds.** Clients and servers should keep their clocks reasonably synchronized (e.g. via NTP); large clock drift will cause valid requests to be rejected.
-- **Sensitive headers are redacted from logs.** `x-hmac`, `x-hmac-timestamp`, and `authorization` are stripped from Fastify's request logs (see [hmac-api/src/app.ts](src/app.ts)).
+- **Sensitive headers are redacted from logs.** `x-hmac`, `x-hmac-timestamp`, and `authorization` are stripped from Fastify's request logs (see [hmac-api/src/app.ts](hmac-api/src/app.ts)).
 - **Always serve this over HTTPS in production.** HMAC authenticates and protects the integrity of a request, but does not provide confidentiality — without TLS, headers and body are still visible to anyone on the network path.
 - **This repository has no license file yet.** If you intend to reuse this code, add a `LICENSE` file to the repository to state the terms explicitly.
 
@@ -362,34 +367,40 @@ The image declares a `HEALTHCHECK` that polls `GET /health` every 30 seconds.
 ## Project structure
 
 ```text
-src/
-  app.ts                     # Fastify app factory: plugins, error handler, route registration
-  server.ts                  # Process entrypoint: starts the server, handles graceful shutdown
-  config/
-    env.ts                   # Zod-validated environment configuration
-  routes/
-    index.ts                 # Registers all route plugins
-    health/healthRouter.ts   # GET /health
-    user/userRouter.ts       # POST /user/withHmac, POST /user/withOutHmac
-  controller/
-    user/userController.ts   # Route handlers
-  middleware/
-    authenticateHmac.ts      # HMAC verification hook
-    errorHandler.ts          # Centralized error -> response envelope mapping
-    requestTimer.ts          # Captures request-arrival time for timing metadata
-  schemas/
-    user/userSchema.ts       # Zod request/response schemas
-  utils/
-    hmac.ts                  # Signing/verification primitives (hash, canonical message, sign)
-    commonFunction.ts        # Response envelope + request timing helpers
-    constants.ts             # Shared status codes/messages
-  types/
-    fastify.d.ts             # Fastify request type augmentation
-tests/
-  unit/                      # Pure function tests
-  integration/                # End-to-end route tests
-  security/                   # HMAC-specific behavior tests
-  helpers/signRequest.ts      # Independent client-side signing implementation used by tests
+hmac-api/
+  src/
+    app.ts                     # Fastify app factory: plugins, error handler, route registration
+    server.ts                  # Process entrypoint: starts the server, handles graceful shutdown
+    config/
+      env.ts                   # Zod-validated environment configuration
+    routes/
+      index.ts                 # Registers all route plugins
+      health/healthRouter.ts   # GET /health
+      user/userRouter.ts       # POST /user/withHmac, POST /user/withOutHmac
+    controller/
+      user/userController.ts   # Route handlers
+    middleware/
+      authenticateHmac.ts      # HMAC verification hook
+      errorHandler.ts          # Centralized error -> response envelope mapping
+      requestTimer.ts          # Captures request-arrival time for timing metadata
+    schemas/
+      user/userSchema.ts       # Zod request/response schemas
+    utils/
+      hmac.ts                  # Signing/verification primitives (hash, canonical message, sign)
+      commonFunction.ts        # Response envelope + request timing helpers
+      constants.ts             # Shared status codes/messages
+    types/
+      fastify.d.ts             # Fastify request type augmentation
+  tests/
+    unit/                      # Pure function tests
+    integration/                # End-to-end route tests
+    security/                   # HMAC-specific behavior tests
+    helpers/signRequest.ts      # Independent client-side signing implementation used by tests
+  Dockerfile
+  package.json
+  tsconfig.json
+  vitest.config.mts
+README.md
 ```
 
 ---
@@ -401,7 +412,7 @@ Contributions are welcome. If you'd like to propose a change:
 1. Fork the repository and create a feature branch.
 2. Make your changes, keeping the existing code style (see `tsconfig.json`'s `strict` settings).
 3. Add or update tests under `tests/` for any behavior change — the security-relevant behaviors in `authenticateHmac.ts` are especially test-sensitive.
-4. Run `npm test` and `npm run build` locally before opening a pull request.
+4. From inside `hmac-api/`, run `npm test` and `npm run build` locally before opening a pull request.
 5. Open a pull request describing the change and the reasoning behind it.
 
 For substantial changes, please open an issue first to discuss the approach.
